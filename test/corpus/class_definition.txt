@@ -41,3 +41,25 @@ ENDCLASS.
     (visibility_section)
     (data_statement
       (identifier))))
+
+================================================================================
+Class definition deferred
+================================================================================
+CLASS zcl_foo DEFINITION DEFERRED.
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_deferred_definition
+    (identifier)))
+
+================================================================================
+Class definition local friends
+================================================================================
+CLASS zcl_foo DEFINITION LOCAL FRIENDS zcl_bar zcl_baz.
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_local_friends_definition
+    (identifier)
+    (identifier)
+    (identifier)))
