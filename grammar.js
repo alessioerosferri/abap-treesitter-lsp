@@ -191,6 +191,7 @@ module.exports = grammar({
         $.authority_check_statement,
         $.set_parameter_statement,
         $.get_parameter_statement,
+        $.get_time_stamp_statement,
         $.call_transformation_statement,
         $.export_statement,
         $.import_statement,
@@ -403,7 +404,11 @@ module.exports = grammar({
       seq("(", optional($._argument_list_body), ")"),
 
     _argument_list_body: ($) =>
-      choice($._expression, commaSep1($.named_argument)),
+      choice(
+        repeat1($._call_params),
+        commaSep1($.named_argument),
+        $._expression,
+      ),
 
     named_argument: ($) => seq($.identifier, "=", $._expression),
 
@@ -1752,6 +1757,9 @@ module.exports = grammar({
 
     get_parameter_statement: ($) =>
       seq(kw("GET"), kw("PARAMETER"), kw("ID"), $._expression, kw("FIELD"), $._expression),
+
+    get_time_stamp_statement: ($) =>
+      seq(kwSeq("GET TIME STAMP"), kw("FIELD"), $._expression),
 
     // =========================================================================
     // Phase 7: CALL TRANSFORMATION
