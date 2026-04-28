@@ -70,6 +70,7 @@ module.exports = grammar({
     [$._expression, $._type_expression],
     [$._expression, $._read_table_addition],
     [$._table_modify_addition, $.delete_statement],
+    [$._table_modify_addition, $.modify_db_statement],
     [$.parenthesized_expression, $.write_statement],
     [$.parenthesized_expression, $._constructor_body],
     [$._block_statement, $.class_implementation],

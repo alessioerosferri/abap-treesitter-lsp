@@ -43,13 +43,15 @@ Full expression support including arithmetic, comparison (symbolic and keyword f
 
 ```bash
 npm install
-npx tree-sitter generate
+npm run generate
 ```
+
+> **Note:** `npm run build` additionally runs `node-gyp rebuild` to compile the native Node addon, which requires `binding.gyp` to be present. Use `npm run generate` for grammar regeneration only.
 
 ## Testing
 
 ```bash
-npx tree-sitter test
+npm test
 ```
 
 229 tests across 42 test files covering all grammar constructs.
