@@ -259,6 +259,8 @@ module.exports = grammar({
         $.loop_statement,
         $.try_statement,
         $.class_definition,
+        $.class_deferred_definition,
+        $.class_local_friends_definition,
         $.class_implementation,
         $.interface_definition,
         $.method_implementation,
@@ -762,6 +764,16 @@ module.exports = grammar({
         kw("ENDCLASS"), ".",
       ),
 
+    class_deferred_definition: ($) =>
+      seq(
+        kw("CLASS"), $.identifier, kw("DEFINITION"), kw("DEFERRED"), ".",
+      ),
+
+    class_local_friends_definition: ($) =>
+      seq(
+        kw("CLASS"), $.identifier, kw("DEFINITION"), kwSeq("LOCAL FRIENDS"), repeat1($.identifier), ".",
+      ),
+
     _class_def_additions: ($) =>
       choice(
         seq(kw("INHERITING"), kw("FROM"), $.identifier),
@@ -773,8 +785,6 @@ module.exports = grammar({
         seq(kw("DURATION"), choice(kw("SHORT"), kw("MEDIUM"), kw("LONG"))),
         seq(kw("FRIENDS"), repeat1($.identifier)),
         kw("PUBLIC"),
-        kwSeq("DEFERRED"),
-        seq(kwSeq("LOCAL FRIENDS"), repeat1($.identifier)),
       ),
 
     _class_def_body: ($) =>
