@@ -63,6 +63,7 @@ module.exports = grammar({
 
   conflicts: ($) => [
     [$._expression, $.dynamic_reference],
+    [$._expression, $.type_component_reference],
     [$._expression, $.named_argument],
     [$._comparison_operator, $.assignment_statement],
     [$._expression, $.table_expression],
@@ -318,10 +319,14 @@ module.exports = grammar({
     string_literal: (_$) =>
       token(seq("'", repeat(choice(/[^'\n]/, "''")), "'")),
 
+    // Backtick template strings (ABAP 7.40+): `Hello World`, ``
+    template_string_literal: (_$) =>
+      token(seq("`", /[^`]*/, "`")),
+
     hex_literal: (_$) => /[xX]'[0-9a-fA-F]*'/,
 
     _literal: ($) =>
-      choice($.number_literal, $.string_literal, $.hex_literal),
+      choice($.number_literal, $.string_literal, $.template_string_literal, $.hex_literal),
 
     // =========================================================================
     // Expressions
@@ -495,8 +500,12 @@ module.exports = grammar({
     reduce_expression: ($) =>
       seq(kw("REDUCE"), $._type_reference, "(", $._reduce_body, ")"),
 
+    // Type reference with optional component selector: /dmo/travel-description, structure-field
+    type_component_reference: ($) =>
+      seq($.identifier, "-", $.identifier),
+
     _type_reference: ($) =>
-      choice($.identifier, $.field_symbol, "#"),
+      choice($.type_component_reference, $.identifier, $.field_symbol, "#"),
 
     _constructor_body: ($) =>
       choice(
