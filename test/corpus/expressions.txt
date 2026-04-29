@@ -125,9 +125,7 @@ intf~method.
 --------------------------------------------------------------------------------
 
 (source_file
-  (component_access
-    (identifier)
-    (identifier)))
+  (identifier))
 
 ================================================================================
 Method call expression

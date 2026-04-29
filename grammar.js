@@ -57,7 +57,7 @@ module.exports = grammar({
 
   externals: ($) => [$.line_comment],
 
-  extras: ($) => [/\s/, $.comment, $.line_comment],
+  extras: ($) => [/\s/, $.comment, $.line_comment, $.pragma],
 
   word: ($) => $._identifier_chars,
 
@@ -282,11 +282,15 @@ module.exports = grammar({
 
     comment: (_$) => token(seq('"', /.*/)),
 
+    // ABAP syntax hints: ##NEEDED, ##OPERATOR[**], ##INTO_OK, ##RELAX, etc.
+    pragma: (_$) => token(seq('##', /[A-Za-z_][A-Za-z0-9_]*/, optional(seq('[', /[^\]\n]*/, ']')))),
+
     // =========================================================================
     // Identifiers
     // =========================================================================
 
-    _identifier_chars: (_$) => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    // ~ is included for SQL column aliases (booking~field) and interface methods (lif~create)
+    _identifier_chars: (_$) => /[a-zA-Z_][a-zA-Z0-9_~]*/,
 
     identifier: ($) =>
       choice($._identifier_chars, $.namespace_identifier),
@@ -349,6 +353,8 @@ module.exports = grammar({
         $.inline_data_declaration,
         $.inline_field_symbol,
         $.predicate_expression,
+        // Open SQL host variable prefix (@var, @DATA(var)) — only appears in SQL contexts
+        seq("@", choice($.inline_data_declaration, $.identifier)),
       ),
 
     parenthesized_expression: ($) => seq("(", $._expression, ")"),
@@ -519,7 +525,7 @@ module.exports = grammar({
       seq(
         optional($.let_expression),
         kw("INIT"), repeat1(seq($.identifier, optional($._type_spec), "=", $._expression)),
-        kw("FOR"), repeat1($.for_expression),
+        repeat1($.for_expression),
         kw("NEXT"), repeat1(seq($.identifier, "=", $._expression)),
       ),
 
@@ -657,11 +663,15 @@ module.exports = grammar({
 
     types_statement: ($) =>
       choice(
+        // RAP table types: TYPE TABLE FOR CREATE/UPDATE/DELETE/FAILED/REPORTED/MAPPED entity
+        seq(kw("TYPES"), $.identifier, kw("TYPE"), kwSeq("TABLE FOR"),
+          choice(kw("CREATE"), kw("UPDATE"), kw("DELETE"), kw("FAILED"), kw("REPORTED"), kw("MAPPED"), kw("READ")),
+          $.identifier),
         seq(kw("TYPES"), $.identifier, optional($._type_spec), repeat($._type_additions)),
         seq(kw("TYPES"), kw("BEGIN"), kw("OF"), $.identifier),
         seq(kw("TYPES"), kw("END"), kw("OF"), $.identifier),
         // ENUM types (7.40+)
-        seq(kw("TYPES"), kw("BEGIN"), kw("OF"), kw("ENUM"), $.identifier, optional(seq(kw("STRUCTURE"), $.identifier))),
+        seq(kw("TYPES"), kw("BEGIN"), kw("OF"), kw("ENUM"), $.identifier, optional(seq(kw("STRUCTURE"), $.identifier)), optional(seq(kwSeq("BASE TYPE"), $._type_spec))),
         seq(kw("TYPES"), kw("END"), kw("OF"), kw("ENUM"), $.identifier, optional(seq(kw("STRUCTURE"), $.identifier))),
       ),
 
@@ -789,6 +799,7 @@ module.exports = grammar({
         seq(kwSeq("RISK LEVEL"), choice(kw("HARMLESS"), kw("DANGEROUS"), kw("CRITICAL"))),
         seq(kw("DURATION"), choice(kw("SHORT"), kw("MEDIUM"), kw("LONG"))),
         seq(kw("FRIENDS"), repeat1($.identifier)),
+        seq(kwSeq("GLOBAL FRIENDS"), repeat1($.identifier)),
         kw("PUBLIC"),
       ),
 
@@ -853,6 +864,15 @@ module.exports = grammar({
         seq(kw("FOR"), kw("EVENT"), $.identifier, kw("OF"), $.identifier,
           optional(seq(kw("IMPORTING"), repeat1($.method_param)))),
         seq(kw("FOR"), kw("TESTING")),
+        // RAP behavior method additions (FOR MODIFY/READ/ACTION)
+        kwSeq("FOR MODIFY"),
+        kwSeq("FOR READ"),
+        seq(kwSeq("FOR ACTION"), $._expression),
+        // RAP entity operation spec (FOR CREATE/UPDATE/DELETE/READ/ACTION entity)
+        seq(kw("FOR"), choice(kw("CREATE"), kw("UPDATE"), kw("DELETE")), $.identifier),
+        seq(kw("FOR"), kw("READ"), $.identifier,
+          optional(seq(kw("RESULT"), $.identifier))),
+        seq(kw("RESULT"), $.identifier),
       ),
 
     method_importing: ($) =>
@@ -1261,16 +1281,21 @@ module.exports = grammar({
       seq(kwSeq("MOVE-CORRESPONDING"), $._expression, kw("TO"), $._expression),
 
     assign_statement: ($) =>
-      seq(kw("ASSIGN"), $._expression, kw("TO"), $.field_symbol,
-        repeat(choice(
-          seq(kw("CASTING"), optional(choice(
+      choice(
+        // ASSIGN COMPONENT field OF STRUCTURE struct TO <fs>
+        seq(kw("ASSIGN"), kw("COMPONENT"), $._expression, kw("OF"), kw("STRUCTURE"), $._expression,
+          kw("TO"), choice($.field_symbol, $.inline_field_symbol)),
+        seq(kw("ASSIGN"), $._expression, kw("TO"), choice($.field_symbol, $.inline_field_symbol),
+          repeat(choice(
+            seq(kw("CASTING"), optional(choice(
+              seq(kw("TYPE"), $._type_expression),
+              seq(kw("LIKE"), $._expression),
+              seq(kw("TYPE"), kw("HANDLE"), $._expression),
+            ))),
             seq(kw("TYPE"), $._type_expression),
-            seq(kw("LIKE"), $._expression),
-            seq(kw("TYPE"), kw("HANDLE"), $._expression),
+            seq(kw("DECIMALS"), $._expression),
           ))),
-          seq(kw("TYPE"), $._type_expression),
-          seq(kw("DECIMALS"), $._expression),
-        ))),
+      ),
 
     unassign_statement: ($) =>
       seq(kw("UNASSIGN"), $.field_symbol),
@@ -1605,17 +1630,30 @@ module.exports = grammar({
     // =========================================================================
 
     select_statement: ($) =>
-      seq(kw("SELECT"),
-        optional(choice(kw("SINGLE"), kw("DISTINCT"))),
-        $._sql_field_list,
-        kw("FROM"), $._sql_source,
-        optional($._sql_target),
-        optional(seq(kw("UP"), kw("TO"), $._expression, kw("ROWS"))),
-        optional(seq(kw("WHERE"), $._sql_condition)),
-        optional(seq(kwSeq("GROUP BY"), commaSep1($._expression))),
-        optional(seq(kw("HAVING"), $._sql_condition)),
-        optional(seq(kwSeq("ORDER BY"), commaSep1(seq($._expression, optional(choice(kw("ASCENDING"), kw("DESCENDING"))))))),
-        optional($._sql_target)),
+      choice(
+        // Classic: SELECT [SINGLE|DISTINCT] fields FROM source [INTO target] ...
+        seq(kw("SELECT"),
+          optional(choice(kw("SINGLE"), kw("DISTINCT"))),
+          $._sql_field_list,
+          kw("FROM"), $._sql_source,
+          optional($._sql_target),
+          optional(seq(kw("UP"), kw("TO"), $._expression, kw("ROWS"))),
+          optional(seq(kw("WHERE"), $._sql_condition)),
+          optional(seq(kwSeq("GROUP BY"), commaSep1($._expression))),
+          optional(seq(kw("HAVING"), $._sql_condition)),
+          optional(seq(kwSeq("ORDER BY"), commaSep1(seq($._expression, optional(choice(kw("ASCENDING"), kw("DESCENDING"))))))),
+          optional($._sql_target)),
+        // Modern (7.5+): SELECT FROM source FIELDS field_list [INTO target] [WHERE cond]
+        seq(kw("SELECT"), kw("FROM"), $._sql_source,
+          optional(seq(kw("FIELDS"), $._sql_field_list)),
+          optional($._sql_target),
+          optional(seq(kw("UP"), kw("TO"), $._expression, kw("ROWS"))),
+          optional(seq(kw("WHERE"), $._sql_condition)),
+          optional(seq(kwSeq("GROUP BY"), commaSep1($._expression))),
+          optional(seq(kw("HAVING"), $._sql_condition)),
+          optional(seq(kwSeq("ORDER BY"), commaSep1(seq($._expression, optional(choice(kw("ASCENDING"), kw("DESCENDING"))))))),
+          optional($._sql_target)),
+      ),
 
     select_loop_statement: ($) =>
       seq(kw("SELECT"),
@@ -1648,15 +1686,23 @@ module.exports = grammar({
           "(", choice("*", seq(optional(kw("DISTINCT")), $._expression)), ")"),
       ),
 
-    _sql_source: ($) =>
+    // A single table reference (expression with optional alias)
+    _sql_table_ref: ($) =>
       choice(
-        $._expression,
         seq($._expression, kw("AS"), $.identifier),
-        seq($._sql_source, $._sql_join, $._sql_source, kw("ON"), $._sql_condition),
+        $._expression,
       ),
 
+    // SQL source: one or more table references joined with JOIN ... ON ...
+    // Using seq+repeat avoids left-recursion; repeat is greedy so JOINs are consumed.
+    _sql_source: ($) =>
+      seq(
+        $._sql_table_ref,
+        repeat(seq($._sql_join, $._sql_table_ref, kw("ON"), $._sql_condition)),
+      ),
     _sql_join: (_$) =>
       choice(
+        kw("JOIN"),
         kwSeq("INNER JOIN"),
         kwSeq("LEFT OUTER JOIN"),
         kwSeq("LEFT JOIN"),
